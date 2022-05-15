@@ -22,7 +22,7 @@ void hashmap_init_len(HashMap *hm, u64 len) {
     hm->len = len;
 
     for (u64 i = 0; i < hm->len; ++i) {
-        hm->map[i].type = Empty;
+        hm->map[i].type = et_Empty;
     }
 }
 
@@ -42,7 +42,7 @@ void hashmap_rehash(HashMap *hm) {
     for (u64 i = 0; i < hm->len; ++i) {
         Entry entry = hm->map[i];
 
-        if (entry.type == Occupied) {
+        if (entry.type == et_Occupied) {
             hashmap_put(&new, entry.key, entry.value);
         }
     }
@@ -60,7 +60,7 @@ bool hashmap_get(HashMap *hm, const char *key, u64 *value) {
     for (;;) {
         Entry entry = hm->map[hash_val];
 
-        if (entry.type == Occupied) {
+        if (entry.type == et_Occupied) {
             if (strcmp(entry.key, key) == 0) {
                 *value = entry.value;
                 return FALSE;
@@ -86,7 +86,7 @@ void hashmap_put(HashMap *hm, const char *key, u64 value) {
     for (;;) {
         Entry *entry = &hm->map[hash_val];
 
-        if (entry->type == Occupied) {
+        if (entry->type == et_Occupied) {
             if (strcmp(entry->key, key) == 0) {
                 entry->value = value;
                 return;
@@ -95,7 +95,7 @@ void hashmap_put(HashMap *hm, const char *key, u64 value) {
         else {
             entry->key = key;
             entry->value = value;
-            entry->type = Occupied;
+            entry->type = et_Occupied;
             return;
         }
 

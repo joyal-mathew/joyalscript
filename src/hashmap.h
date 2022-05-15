@@ -3,8 +3,8 @@
 #pragma once
 
 typedef enum {
-    Occupied,
-    Empty,
+    et_Occupied,
+    et_Empty,
 } EntryType;
 
 typedef struct {
@@ -20,5 +20,8 @@ typedef struct {
 
 void hashmap_init(HashMap *hm);
 void hashmap_deinit(HashMap *hm);
+
+WARN_UNUSED
 bool  hashmap_get(HashMap *hm, const char *key, u64 *value);
+
 void hashmap_put(HashMap *hm, const char *key, u64 value);
