@@ -23,9 +23,10 @@ char next(Lexer *lexer) {
     return lexer->context->program[lexer->index++];
 }
 
-WARN_UNUSED
-bool lexer_integer(Lexer *lexer) {
-    lexer->type = tt_Integer;
+RESULT lexer_integer(Lexer *lexer) {
+    u64 last_value;
+
+    lexer->token_type = tt_Integer;
     lexer->integer = 0;
 
     while (isdigit(peek(lexer))) {
@@ -33,17 +34,19 @@ bool lexer_integer(Lexer *lexer) {
         HRESULT add_result = ULongLongAdd(lexer->integer, next(lexer) - '0', &lexer->integer);
 
         if (mult_result != S_OK || add_result != S_OK) {
-            return dispatch_error(lexer->context, "Overflowing integer literal", lexer->line);
+            DISPATCH_ERROR_FMT(lexer->context, lexer->line, "Overflowing integer literal `%llu...`", last_value);
+            return TRUE;
         }
+
+        last_value = lexer->integer;
     }
 
     return FALSE;
 }
 
-WARN_UNUSED
-bool lexer_operator(Lexer *lexer) {
+RESULT lexer_operator(Lexer *lexer) {
     char op_str[MAX_OPERATOR_LEN + 1] = { 0 };
-    u64 i = 0;
+    u8 i = 0;
 
     bool op_found = FALSE;
     u64 op_index;
@@ -63,17 +66,18 @@ bool lexer_operator(Lexer *lexer) {
     }
 
     if (!op_found) {
-        return dispatch_error(lexer->context, "Undefined operator", lexer->line);
+        DISPATCH_ERROR_FMT(lexer->context, lexer->line, "Undefined operator `%s`", op);
+        return TRUE;
     }
 
-    lexer->type = tt_Operator;
+    lexer->token_type = tt_Operator;
     lexer->operator_type = op;
     lexer->index = op_index;
 
     return FALSE;
 }
 
-bool lexer_init(Lexer *lexer) {
+RESULT lexer_init(Lexer *lexer) {
     lexer->index = 0;
     lexer->line = 1;
 
@@ -93,7 +97,7 @@ void lexer_deinit(Lexer *lexer) {
     hashmap_deinit(&lexer->operator_map);
 }
 
-bool lexer_next(Lexer *lexer) {
+RESULT lexer_next(Lexer *lexer) {
     while (isspace(peek(lexer))) {
         if (next(lexer) == '\n') {
             lexer->line += 1;
@@ -102,7 +106,7 @@ bool lexer_next(Lexer *lexer) {
 
     switch (peek(lexer)) {
         case 0:
-            lexer->type = tt_Eof;
+            lexer->token_type = tt_Eof;
             break;
         default:
             if (isdigit(peek(lexer))) {
@@ -116,24 +120,25 @@ bool lexer_next(Lexer *lexer) {
     return FALSE;
 }
 
-void print_token(Lexer *lexer) {
-    switch (lexer->type) {
+void token_to_str(Lexer *lexer) {
+    switch (lexer->token_type) {
         case tt_Integer:
-            printf("[INT %llu]", lexer->integer);
+            sprintf(lexer->token_str, "%llu", lexer->integer);
             break;
         case tt_Operator:
             switch (lexer->operator_type) {
-                case op_Addition:           printf("[OP add]"); break;
-                case op_Subtraction:        printf("[OP sub]"); break;
-                case op_Multiplication:     printf("[OP mul]"); break;
-                case op_Division:           printf("[OP div]"); break;
-                case op_OpenParenthesis:    printf("[OP (]");   break;
-                case op_CloseParenthesis:   printf("[OP )]");   break;
+                case op_Addition:           strcpy(lexer->token_str, "+");  break;
+                case op_Subtraction:        strcpy(lexer->token_str, "-");  break;
+                case op_Multiplication:     strcpy(lexer->token_str, "*");  break;
+                case op_Division:           strcpy(lexer->token_str, "/");  break;
+                case op_OpenParenthesis:    strcpy(lexer->token_str, "(");  break;
+                case op_CloseParenthesis:   strcpy(lexer->token_str, ")");  break;
+                default: break;
             }
 
             break;
         case tt_Eof:
-            printf("[EOF]");
+            strcpy(lexer->token_str, "EOF");
             break;
     }
 }

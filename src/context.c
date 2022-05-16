@@ -10,31 +10,24 @@ void handle_error(Context *context, bool error) {
     }
 }
 
-bool dispatch_error(Context *context, const char *msg, u64 line) {
-    strcpy_s(context->error_msg, ERROR_MSG_LEN, msg);
-    context->error_line = line;
-    return TRUE;
-}
-
 void context_init(Context *context, const char *path) {
     context->program = read_file(path);
     context->lexer.context = context;
+    context->parser.context = context;
+    parser_init(&context->parser);
     handle_error(context, lexer_init(&context->lexer));
 }
 
 void context_deinit(Context *context) {
     lexer_deinit(&context->lexer);
+    parser_deinit(&context->parser);
     deallocate(context->program);
 }
 
 void context_run(Context *context) {
-    for (;;) {
-        print_token(&context->lexer);
-
-        if (context->lexer.type == tt_Eof) {
-            break;
-        }
-
-        handle_error(context, lexer_next(&context->lexer));
+    while (context->lexer.token_type != tt_Eof) {
+        handle_error(context, parser_next(&context->parser));
+        print_statement(&context->parser);
+        parser_stmt_deinit(&context->parser);
     }
 }

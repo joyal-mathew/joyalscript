@@ -5,6 +5,7 @@
 #pragma once
 
 typedef uint64_t u64;
+typedef uint8_t u8;
 typedef char bool;
 
 #define TRUE 1
@@ -23,6 +24,8 @@ typedef char bool;
 #else
 #define WARN_UNUSED __attribute__((warn_unused_result))
 #endif
+
+#define RESULT WARN_UNUSED bool
 
 void *check_ptr(void *ptr);
 void *allocate(u64 count, u64 size);
