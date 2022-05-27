@@ -1,10 +1,12 @@
+#pragma once
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#pragma once
-
+typedef int64_t i64;
 typedef uint64_t u64;
+typedef uint16_t u16;
 typedef uint8_t u8;
 typedef char bool;
 
@@ -21,15 +23,22 @@ typedef char bool;
 
 #ifdef __INTELLISENSE__
 #define WARN_UNUSED
+#define PACKED
+#define UNUSED
+#define _Static_assert(...)
 #else
 #define WARN_UNUSED __attribute__((warn_unused_result))
+#define UNUSED __attribute__((unused))
+#define PACKED __attribute__((__packed__))
 #endif
 
 #define RESULT WARN_UNUSED bool
 
+void begin_tracking();
+void tracking_diagnostics();
 void *check_ptr(void *ptr);
-void *allocate(u64 count, u64 size);
-void *reallocate(void *ptr, u64 count, u64 size);
-void deallocate(void *ptr);
+void *heap_alloc(u64 count, u64 size);
+void *heap_realloc(void *ptr, u64 count, u64 size);
+void heap_dealloc(void *ptr);
 
 char *read_file(const char *path);

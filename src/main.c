@@ -1,5 +1,6 @@
 #include "context.h"
 
+// TODO: fixed signedness issue (negation can overflow and literals can be too large to be signed)
 int main(int argc, char **argv) {
     Context context;
 

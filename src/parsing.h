@@ -1,7 +1,7 @@
+#pragma once
+
 #include "auxiliary.h"
 #include "lexing.h"
-
-#pragma once
 
 typedef struct __Context__ Context;
 
@@ -50,7 +50,7 @@ typedef struct {
     };
 } Parser;
 
-void parser_init(Parser *parser);
+void parser_init(Parser *parser, Context *context);
 void parser_deinit(Parser *parser);
 void parser_stmt_deinit(Parser *parser);
 RESULT parser_next(Parser *parser);

@@ -18,7 +18,7 @@ u64 hash(const char *s) {
 }
 
 void hashmap_init_len(HashMap *hm, u64 len) {
-    hm->map = allocate(len, sizeof (Entry));
+    hm->map = heap_alloc(len, sizeof (Entry));
     hm->len = len;
 
     for (u64 i = 0; i < hm->len; ++i) {
@@ -31,7 +31,7 @@ void hashmap_init(HashMap *hm) {
 }
 
 void hashmap_deinit(HashMap *hm) {
-    deallocate(hm->map);
+    heap_dealloc(hm->map);
 }
 
 void hashmap_rehash(HashMap *hm) {

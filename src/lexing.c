@@ -4,7 +4,7 @@
 #include "lexing.h"
 #include "context.h"
 
-#define MAX_OPERATOR_LEN 8
+#define MAX_OPERATOR_LEN 7
 
 bool is_operator(char c) {
     return  c == '+' ||
@@ -77,9 +77,10 @@ RESULT lexer_operator(Lexer *lexer) {
     return FALSE;
 }
 
-RESULT lexer_init(Lexer *lexer) {
+RESULT lexer_init(Lexer *lexer, Context *context) {
     lexer->index = 0;
     lexer->line = 1;
+    lexer->context = context;
 
     hashmap_init(&lexer->operator_map);
 
@@ -120,22 +121,39 @@ RESULT lexer_next(Lexer *lexer) {
     return FALSE;
 }
 
+u64 str_to_sstr(const char *str) {
+    u64 sstr = 0;
+    u8 i = 0;
+
+    for (; *str && i <= 6; ++str) {
+        sstr |= (u64) (*str) << (i++ * 8);
+    }
+
+    return sstr;
+}
+
+u64 op_to_sstr(OperatorType op) {
+    switch (op) {
+        case op_Addition:           return str_to_sstr("+");
+        case op_Subtraction:        return str_to_sstr("-");
+        case op_Multiplication:     return str_to_sstr("*");
+        case op_Division:           return str_to_sstr("/");
+        case op_OpenParenthesis:    return str_to_sstr("(");
+        case op_CloseParenthesis:   return str_to_sstr(")");
+        case NUM_OPERATORS:         return str_to_sstr("?");
+    }
+}
+
 void token_to_str(Lexer *lexer) {
     switch (lexer->token_type) {
+        u64 sstr;
+
         case tt_Integer:
             sprintf(lexer->token_str, "%llu", lexer->integer);
             break;
         case tt_Operator:
-            switch (lexer->operator_type) {
-                case op_Addition:           strcpy(lexer->token_str, "+");  break;
-                case op_Subtraction:        strcpy(lexer->token_str, "-");  break;
-                case op_Multiplication:     strcpy(lexer->token_str, "*");  break;
-                case op_Division:           strcpy(lexer->token_str, "/");  break;
-                case op_OpenParenthesis:    strcpy(lexer->token_str, "(");  break;
-                case op_CloseParenthesis:   strcpy(lexer->token_str, ")");  break;
-                default: break;
-            }
-
+            sstr = op_to_sstr(lexer->operator_type);
+            strcpy(lexer->token_str, (char *) &sstr);
             break;
         case tt_Eof:
             strcpy(lexer->token_str, "EOF");

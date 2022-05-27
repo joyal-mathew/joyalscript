@@ -6,17 +6,19 @@
 
 RESULT parser_binop(Parser *parser, Expression *expr, u8 precedence);
 
-void parser_init(Parser *parser) {
+void parser_init(Parser *parser, Context *context) {
+    parser->context = context;
+
     memset(parser->precedence_lookup, 0, NUM_OPERATORS * sizeof (u8));
 
-    parser->precedence_lookup[op_Addition] = 2; // NOTE: MAX_PRECEDENCE depends on this
+    parser->precedence_lookup[op_Addition] = 2; // NOTE: MAX_PRECEDENCE must change if this does
     parser->precedence_lookup[op_Subtraction] = 2;
     parser->precedence_lookup[op_Multiplication] = 1;
     parser->precedence_lookup[op_Division] = 1;
 }
 
 void parser_deinit(Parser *parser) {
-    memset(parser->precedence_lookup, 0, NUM_OPERATORS * sizeof (u8)); // TODO: remove this
+    memset(parser->precedence_lookup, 0, NUM_OPERATORS * sizeof (u8));
 }
 
 RESULT parser_expr(Parser *parser, Expression *expr) {
@@ -43,7 +45,7 @@ RESULT parser_term(Parser *parser, Expression *expr) {
                 case op_Subtraction:
                     expr->type = ex_UnaryOperation;
                     expr->un_op = op_Subtraction;
-                    expr->oprand = allocate(1, sizeof (Expression));
+                    expr->oprand = heap_alloc(1, sizeof (Expression));
 
                     CHECK(lexer_next(lexer));
                     CHECK(parser_expr(parser, expr->oprand));
@@ -85,14 +87,15 @@ RESULT parser_binop(Parser *parser, Expression *expr, u8 precedence) {
         }
 
         if (precedence == this_precedence) {
-            Expression *lhs = allocate(1, sizeof (Expression));
-            memcpy(lhs, expr, sizeof (Expression));
+            Expression *lhs = heap_alloc(1, sizeof (Expression));
+            *lhs = *expr;
+            // memcpy(lhs, expr, sizeof (Expression));
 
             expr->type = ex_BinaryOperation;
             expr->line = parser->context->lexer.line;
             expr->bin_op = parser->context->lexer.operator_type;
             expr->lhs = lhs;
-            expr->rhs = allocate(1, sizeof (Expression));
+            expr->rhs = heap_alloc(1, sizeof (Expression));
 
             CHECK(lexer_next(&parser->context->lexer));
             CHECK(parser_binop(parser, expr->rhs, precedence - 1));
@@ -110,12 +113,12 @@ void tree_deallocate(Expression *expr) {
         case ex_BinaryOperation:
             tree_deallocate(expr->lhs);
             tree_deallocate(expr->rhs);
-            deallocate(expr->lhs);
-            deallocate(expr->rhs);
+            heap_dealloc(expr->lhs);
+            heap_dealloc(expr->rhs);
             break;
         case ex_UnaryOperation:
             tree_deallocate(expr->oprand);
-            deallocate(expr->oprand);
+            heap_dealloc(expr->oprand);
             break;
         case ex_Integer:
             break;
@@ -139,18 +142,15 @@ RESULT parser_next(Parser *parser) {
 
 void print_expr(Expression *expr) {
     switch (expr->type) {
+        u64 op_sstr;
+
         case ex_Integer:
             printf("%llu", expr->integer);
             break;
         case ex_BinaryOperation:
             putchar('(');
-            switch (expr->bin_op) {
-                case op_Addition:       printf("+ ");    break;
-                case op_Subtraction:    printf("- ");    break;
-                case op_Multiplication: printf("* ");    break;
-                case op_Division:       printf("/ ");    break;
-                default: break;
-            }
+            op_sstr = op_to_sstr(expr->bin_op);
+            printf("%s ", (char *) &op_sstr);
             print_expr(expr->lhs);
             putchar(' ');
             print_expr(expr->rhs);
@@ -159,13 +159,8 @@ void print_expr(Expression *expr) {
             break;
         case ex_UnaryOperation:
             putchar('(');
-            switch (expr->un_op) {
-                case op_Addition:       printf("+ ");    break;
-                case op_Subtraction:    printf("- ");    break;
-                case op_Multiplication: printf("* ");    break;
-                case op_Division:       printf("/ ");    break;
-                default: break;
-            }
+            op_sstr = op_to_sstr(expr->un_op);
+            printf("%s ", (char *) &op_sstr);
             print_expr(expr->oprand);
             putchar(')');
 

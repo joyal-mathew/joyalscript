@@ -1,7 +1,7 @@
+#pragma once
+
 #include "auxiliary.h"
 #include "hashmap.h"
-
-#pragma once
 
 #define MAX_TOKEN_STR_LEN 512
 
@@ -41,7 +41,8 @@ typedef struct {
     };
 } Lexer;
 
-RESULT lexer_init(Lexer *lexer);
+RESULT lexer_init(Lexer *lexer, Context *context);
 void lexer_deinit(Lexer *lexer);
 RESULT lexer_next(Lexer *lexer);
 void token_to_str(Lexer *lexer);
+u64 op_to_sstr(OperatorType op);

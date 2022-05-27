@@ -12,22 +12,25 @@ void handle_error(Context *context, bool error) {
 
 void context_init(Context *context, const char *path) {
     context->program = read_file(path);
-    context->lexer.context = context;
-    context->parser.context = context;
-    parser_init(&context->parser);
-    handle_error(context, lexer_init(&context->lexer));
+    parser_init(&context->parser, context);
+    compiler_init(&context->compiler, context);
+    vm_init(&context->vm, context);
+    handle_error(context, lexer_init(&context->lexer, context));
 }
 
 void context_deinit(Context *context) {
     lexer_deinit(&context->lexer);
     parser_deinit(&context->parser);
-    deallocate(context->program);
+    compiler_deinit(&context->compiler);
+    vm_deinit(&context->vm);
+    heap_dealloc(context->program);
 }
 
 void context_run(Context *context) {
-    while (context->lexer.token_type != tt_Eof) {
-        handle_error(context, parser_next(&context->parser));
-        print_statement(&context->parser);
-        parser_stmt_deinit(&context->parser);
-    }
+    handle_error(context, compiler_compile(&context->compiler));
+    context->vm.program = context->compiler.bytecode.arr;
+
+    handle_error(context, vm_run(&context->vm));
+    ASSERT(context->vm.op_stack_len == 0);
+    print_obj(&context->vm.op_stack[0]);
 }

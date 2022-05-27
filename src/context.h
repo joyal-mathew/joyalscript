@@ -1,7 +1,9 @@
+#pragma once
+
 #include "lexing.h"
 #include "parsing.h"
-
-#pragma once
+#include "compiling.h"
+#include "vm.h"
 
 #define ERROR_MSG_LEN 512
 
@@ -11,6 +13,8 @@
 typedef struct __Context__ {
     Lexer lexer;
     Parser parser;
+    Compiler compiler;
+    Vm vm;
 
     char *program;
 

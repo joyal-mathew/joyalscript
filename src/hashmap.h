@@ -1,8 +1,8 @@
-#include "auxiliary.h"
-
 #pragma once
 
-typedef enum {
+#include "auxiliary.h"
+
+typedef enum PACKED {
     et_Occupied,
     et_Empty,
 } EntryType;
