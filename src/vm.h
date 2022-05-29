@@ -1,6 +1,7 @@
 #pragma once
 
 #include "auxiliary.h"
+#include "compiling.h"
 
 typedef struct __Context__ Context;
 
@@ -13,6 +14,11 @@ typedef struct {
     u64 data;
 } Object;
 
+typedef struct __VmScope__ {
+    Object *stack;
+    struct __VmScope__ *parent;
+} VmScope;
+
 _Static_assert(sizeof (ObjectType) == 1, "ObjectType size");
 _Static_assert(sizeof (Object) == 16, "Object size");
 
@@ -24,6 +30,8 @@ typedef struct {
     u64 op_stack_cap;
 
     bool halted;
+
+    VmScope *scope;
 
     u8 *program;
     u64 pc;

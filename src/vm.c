@@ -3,16 +3,22 @@
 #include "vm.h"
 #include "context.h"
 
-#define DEFAULT_OPSTACK_SIZE 512
-#define NUM_INSTRUCTIONS 9
+#define DEFAULT_STACK_SIZE 512
+
+void vmscope_init(VmScope *scope, VmScope *parent) {
+    scope->parent = parent;
+    scope->stack = heap_alloc(DEFAULT_STACK_SIZE, sizeof (Object));
+}
 
 void vm_init(Vm *vm, Context *context) {
     vm->context = context;
-    vm->op_stack = heap_alloc(DEFAULT_OPSTACK_SIZE, sizeof (Object));
+    vm->op_stack = heap_alloc(DEFAULT_STACK_SIZE, sizeof (Object));
     vm->op_stack_len = 0;
-    vm->op_stack_cap = DEFAULT_OPSTACK_SIZE;
+    vm->op_stack_cap = DEFAULT_STACK_SIZE;
     vm->halted = FALSE;
     vm->pc = 0;
+
+    vmscope_init(vm->scope, NULL);
 }
 
 void vm_deinit(Vm *vm) {
@@ -46,6 +52,19 @@ RESULT inst_push_int(Vm *vm) {
     vm->op_stack[vm->op_stack_len].type = obj_Integer;
     memcpy(&vm->op_stack[vm->op_stack_len].data, &vm->program[vm->pc], 8);
 
+    vm->op_stack_len++;
+    vm->pc += 8;
+
+    return FALSE;
+}
+
+RESULT inst_push(Vm *vm) {
+    u64 ptr;
+
+    memcpy(&ptr, &vm->program[vm->pc], 8);
+    vm_opstack_grow(vm);
+
+    vm->op_stack[vm->op_stack_len] = vm->scope->stack[ptr];
     vm->op_stack_len++;
     vm->pc += 8;
 
@@ -143,6 +162,17 @@ RESULT inst_pop(Vm *vm) {
     return FALSE;
 }
 
+RESULT inst_pull_to(Vm *vm) {
+    u64 ptr;
+
+    memcpy(&ptr, &vm->program[vm->pc], 8);
+    vm->scope->stack[ptr] = vm->op_stack[vm->op_stack_len - 1];
+
+    vm->pc += 8;
+
+    return FALSE;
+}
+
 RESULT inst_halt(Vm *vm) {
     vm->halted = TRUE;
     return FALSE;
@@ -151,7 +181,7 @@ RESULT inst_halt(Vm *vm) {
 void print_obj(Object *obj) {
     switch (obj->type) {
         case obj_Integer:
-            printf("%lld", obj->data);
+            printf("%lld\n", obj->data);
             break;
     }
 }
@@ -159,25 +189,15 @@ void print_obj(Object *obj) {
 bool (*instructions[NUM_INSTRUCTIONS]) (Vm *vm) = {
     inst_inv,
     inst_push_int,
+    inst_push,
     inst_add,
     inst_sub,
     inst_mul,
     inst_div,
     inst_neg,
     inst_pop,
+    inst_pull_to,
     inst_halt,
-};
-
-const char *inst_names[NUM_INSTRUCTIONS] = {
-    "???",
-    "push_int",
-    "add",
-    "sub",
-    "mul",
-    "div",
-    "neg",
-    "pop",
-    "halt",
 };
 
 RESULT vm_run(Vm *vm) {

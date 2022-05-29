@@ -2,7 +2,7 @@
 #include "parsing.h"
 #include "context.h"
 
-#define MAX_PRECEDENCE 2
+#define MAX_PRECEDENCE 3
 
 RESULT parser_binop(Parser *parser, Expression *expr, u8 precedence);
 
@@ -11,7 +11,8 @@ void parser_init(Parser *parser, Context *context) {
 
     memset(parser->precedence_lookup, 0, NUM_OPERATORS * sizeof (u8));
 
-    parser->precedence_lookup[op_Addition] = 2; // NOTE: MAX_PRECEDENCE must change if this does
+    parser->precedence_lookup[op_Assignment] = 3; // NOTE: MAX_PRECEDENCE must change if this does
+    parser->precedence_lookup[op_Addition] = 2;
     parser->precedence_lookup[op_Subtraction] = 2;
     parser->precedence_lookup[op_Multiplication] = 1;
     parser->precedence_lookup[op_Division] = 1;
@@ -37,6 +38,12 @@ RESULT parser_term(Parser *parser, Expression *expr) {
         case tt_Integer:
             expr->type = ex_Integer;
             expr->integer = lexer->integer;
+
+            CHECK(lexer_next(lexer));
+            break;
+        case tt_Identifier:
+            expr->type = ex_Identifier;
+            expr->ident = lexer->ident;
 
             CHECK(lexer_next(lexer));
             break;
@@ -82,14 +89,9 @@ RESULT parser_binop(Parser *parser, Expression *expr, u8 precedence) {
     while (parser->context->lexer.token_type == tt_Operator) {
         u8 this_precedence = parser->precedence_lookup[parser->context->lexer.operator_type];
 
-        if (this_precedence == 0) {
-            break;
-        }
-
-        if (precedence == this_precedence) {
+        if (this_precedence && precedence == this_precedence) {
             Expression *lhs = heap_alloc(1, sizeof (Expression));
             *lhs = *expr;
-            // memcpy(lhs, expr, sizeof (Expression));
 
             expr->type = ex_BinaryOperation;
             expr->line = parser->context->lexer.line;
@@ -120,6 +122,7 @@ void tree_deallocate(Expression *expr) {
             tree_deallocate(expr->oprand);
             heap_dealloc(expr->oprand);
             break;
+        case ex_Identifier:
         case ex_Integer:
             break;
     }
@@ -146,6 +149,9 @@ void print_expr(Expression *expr) {
 
         case ex_Integer:
             printf("%llu", expr->integer);
+            break;
+        case ex_Identifier:
+            printf("%s", expr->ident);
             break;
         case ex_BinaryOperation:
             putchar('(');

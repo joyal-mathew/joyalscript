@@ -11,15 +11,24 @@ bool is_operator(char c) {
             c == '-' ||
             c == '*' ||
             c == '/' ||
+            c == '=' ||
             c == '(' ||
             c == ')' ;
 }
 
 char peek(Lexer *lexer) {
+    #ifdef EBUG_CHARS
+    printf("'%c\n", lexer->context->program[lexer->index]);
+    #endif
+
     return lexer->context->program[lexer->index];
 }
 
 char next(Lexer *lexer) {
+    #ifdef EBUG_CHARS
+    printf("'%c ->\n", lexer->context->program[lexer->index]);
+    #endif
+
     return lexer->context->program[lexer->index++];
 }
 
@@ -66,7 +75,7 @@ RESULT lexer_operator(Lexer *lexer) {
     }
 
     if (!op_found) {
-        DISPATCH_ERROR_FMT(lexer->context, lexer->line, "Undefined operator `%s`", op);
+        DISPATCH_ERROR_FMT(lexer->context, lexer->line, "Undefined operator `%s`", op_str);
         return TRUE;
     }
 
@@ -77,13 +86,29 @@ RESULT lexer_operator(Lexer *lexer) {
     return FALSE;
 }
 
+RESULT lexer_ident(Lexer *lexer) {
+    u64 start = lexer->idents.len;
+
+    while (isalnum(peek(lexer)) || peek(lexer) == '_') {
+        bytevec_push_byte(&lexer->idents, next(lexer));
+    }
+
+    bytevec_push_byte(&lexer->idents, 0);
+    lexer->token_type = tt_Identifier;
+    lexer->ident = (char *) lexer->idents.arr + start;
+
+    return FALSE;
+}
+
 RESULT lexer_init(Lexer *lexer, Context *context) {
     lexer->index = 0;
     lexer->line = 1;
     lexer->context = context;
 
+    bytevec_init(&lexer->idents);
     hashmap_init(&lexer->operator_map);
 
+    hashmap_put(&lexer->operator_map, "=", op_Assignment);
     hashmap_put(&lexer->operator_map, "+", op_Addition);
     hashmap_put(&lexer->operator_map, "-", op_Subtraction);
     hashmap_put(&lexer->operator_map, "*", op_Multiplication);
@@ -105,18 +130,31 @@ RESULT lexer_next(Lexer *lexer) {
         }
     }
 
-    switch (peek(lexer)) {
+    char c = peek(lexer);
+
+    switch (c) {
         case 0:
             lexer->token_type = tt_Eof;
             break;
         default:
-            if (isdigit(peek(lexer))) {
+            if (isdigit(c)) {
                 CHECK(lexer_integer(lexer));
             }
-            else if (is_operator(peek(lexer))) {
+            else if (is_operator(c)) {
                 CHECK(lexer_operator(lexer));
             }
+            else if (isalpha(c) || c == '_') {
+                CHECK(lexer_ident(lexer));
+            }
+            else {
+                DISPATCH_ERROR_FMT(lexer->context, lexer->line, "Invalid character `%c`", c);
+            }
     }
+
+    #ifdef EBUG_TOKENS
+    token_to_str(lexer);
+    printf("[%s]\n", lexer->token_str);
+    #endif
 
     return FALSE;
 }
@@ -134,6 +172,7 @@ u64 str_to_sstr(const char *str) {
 
 u64 op_to_sstr(OperatorType op) {
     switch (op) {
+        case op_Assignment:         return str_to_sstr("=");
         case op_Addition:           return str_to_sstr("+");
         case op_Subtraction:        return str_to_sstr("-");
         case op_Multiplication:     return str_to_sstr("*");
@@ -150,6 +189,9 @@ void token_to_str(Lexer *lexer) {
 
         case tt_Integer:
             sprintf(lexer->token_str, "%llu", lexer->integer);
+            break;
+        case tt_Identifier:
+            sprintf(lexer->token_str, "%s", lexer->ident);
             break;
         case tt_Operator:
             sstr = op_to_sstr(lexer->operator_type);

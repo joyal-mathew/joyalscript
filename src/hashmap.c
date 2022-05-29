@@ -109,3 +109,34 @@ void hashmap_put(HashMap *hm, const char *key, u64 value) {
         }
     }
 }
+
+bool hashmap_get_or_put(HashMap *hm, const char *key, u64 value, u64 *result) {
+    u64 hash_val = hash(key) % hm->len;
+    u64 init_val = hash_val;
+
+    for (;;) {
+        Entry *entry = &hm->map[hash_val];
+
+        if (entry->token_type == et_Occupied) {
+            if (strcmp(entry->key, key) == 0) {
+                *result = entry->value;
+                return FALSE;
+            }
+        }
+        else {
+            entry->key = key;
+            entry->value = value;
+            entry->token_type = et_Occupied;
+            *result = entry->value;
+            return TRUE;
+        }
+
+        hash_val += 1;
+        hash_val %= hm->len;
+
+        if (hash_val == init_val) {
+            hashmap_rehash(hm);
+            return hashmap_get_or_put(hm, key, value, result);
+        }
+    }
+}

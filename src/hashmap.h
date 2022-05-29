@@ -22,3 +22,4 @@ void hashmap_init(HashMap *hm);
 void hashmap_deinit(HashMap *hm);
 RESULT hashmap_get(HashMap *hm, const char *key, u64 *value);
 void hashmap_put(HashMap *hm, const char *key, u64 value);
+bool hashmap_get_or_put(HashMap *hm, const char *key, u64 value, u64 *result);

@@ -1,6 +1,8 @@
 {
     "files.associations": {
-        "parser.h": "c",
-        "string.h": "c"
+        "vm.h": "c",
+        "lexing.h": "c",
+        "parsing.h": "c",
+        "compiling.h": "c"
     }
 }

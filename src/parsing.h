@@ -11,6 +11,7 @@ typedef enum {
 
 typedef enum {
     ex_Integer,
+    ex_Identifier,
     ex_BinaryOperation,
     ex_UnaryOperation,
 } ExpressionType;
@@ -21,6 +22,7 @@ typedef struct __Expression__ {
 
     union {
         u64 integer;
+        char *ident;
 
         struct {
             OperatorType bin_op;

@@ -1,10 +1,12 @@
 #include <string.h>
 #include "bytevec.h"
 
-void bytevec_init(ByteVec *bv, u64 cap) {
-    bv->cap = cap;
+#define DEFAULT_BYTEVEC_CAP 512
+
+void bytevec_init(ByteVec *bv) {
+    bv->cap = DEFAULT_BYTEVEC_CAP;
     bv->len = 0;
-    bv->arr = heap_alloc(cap, sizeof (u8));
+    bv->arr = heap_alloc(DEFAULT_BYTEVEC_CAP, sizeof (u8));
 }
 
 void bytevec_deinit(ByteVec *bv) {
