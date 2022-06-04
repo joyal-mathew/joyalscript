@@ -26,4 +26,3 @@ typedef struct __Context__ {
 void context_init(Context *context, const char *path);
 void context_deinit(Context *context);
 void context_run(Context *context);
-//

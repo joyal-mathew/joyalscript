@@ -4,16 +4,14 @@
 #include "lexing.h"
 
 typedef struct __Context__ Context;
-
-typedef enum {
-    st_Expression,
-} StatementType;
+typedef struct __Statement__ Statement;
 
 typedef enum {
     ex_Integer,
     ex_Identifier,
     ex_BinaryOperation,
     ex_UnaryOperation,
+    ex_Block,
 } ExpressionType;
 
 typedef struct __Expression__ {
@@ -36,24 +34,35 @@ typedef struct __Expression__ {
 
             struct __Expression__ *oprand;
         };
+
+        struct {
+            u64 num_statements;
+            Statement *statements;
+        };
     };
 } Expression;
 
-typedef struct {
-    Context *context;
+typedef enum {
+    st_Expression,
+    st_Print,
+} StatementType;
 
-    StatementType statement_type;
+typedef struct __Statement__ {
+    StatementType type;
     u64 line;
-
-    u8 precedence_lookup[NUM_OPERATORS];
 
     union {
         Expression expr;
     };
+} Statement;
+
+typedef struct {
+    Context *context;
+    u8 precedence_lookup[NUM_OPERATORS];
+    Statement statement;
 } Parser;
 
 void parser_init(Parser *parser, Context *context);
 void parser_deinit(Parser *parser);
 void parser_stmt_deinit(Parser *parser);
 RESULT parser_next(Parser *parser);
-void print_statement(Parser *parser);

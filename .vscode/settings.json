@@ -1,8 +1,0 @@
-{
-    "files.associations": {
-        "vm.h": "c",
-        "lexing.h": "c",
-        "parsing.h": "c",
-        "compiling.h": "c"
-    }
-}

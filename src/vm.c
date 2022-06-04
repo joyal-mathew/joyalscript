@@ -3,86 +3,86 @@
 #include "vm.h"
 #include "context.h"
 
-#define DEFAULT_STACK_SIZE 512
-
-void vmscope_init(VmScope *scope, VmScope *parent) {
-    scope->parent = parent;
-    scope->stack = heap_alloc(DEFAULT_STACK_SIZE, sizeof (Object));
+const char *type_to_str(ObjectType type) {
+    switch (type) {
+    case obj_Integer:   return "Integer";
+    case obj_None:      return "None";
+    default:            return "????";
+    }
 }
 
 void vm_init(Vm *vm, Context *context) {
     vm->context = context;
-    vm->op_stack = heap_alloc(DEFAULT_STACK_SIZE, sizeof (Object));
-    vm->op_stack_len = 0;
-    vm->op_stack_cap = DEFAULT_STACK_SIZE;
     vm->halted = FALSE;
     vm->pc = 0;
 
-    vmscope_init(vm->scope, NULL);
+    stack_init(&vm->op_stack, sizeof (Object));
+    gc_init(&vm->gc);
+    vm->scope = NULL;
 }
 
 void vm_deinit(Vm *vm) {
-    heap_dealloc(vm->op_stack);
-}
-
-void vm_opstack_grow(Vm *vm) {
-    if (vm->op_stack_len >= vm->op_stack_cap) {
-        vm->op_stack_cap = 2 * vm->op_stack_cap + 1;
-        vm->op_stack = heap_realloc(vm->op_stack, vm->op_stack_cap, sizeof (Object));
-    }
-}
-
-void vm_opstack_pop(Vm *vm, Object *obj) {
-    if (vm->op_stack_len == 0) {
-        fprintf(stderr, FATAL "Stack underflow\n");
-        exit(-1);
-    }
-
-    *obj = vm->op_stack[--vm->op_stack_len];
-}
-
-RESULT inst_inv(UNUSED Vm *vm) {
-    fprintf(stderr, FATAL "Invalid instruction");
-    exit(-1);
+    stack_deinit(&vm->op_stack);
+    gc_deinit(&vm->gc);
 }
 
 RESULT inst_push_int(Vm *vm) {
-    vm_opstack_grow(vm);
+    u64 integer;
 
-    vm->op_stack[vm->op_stack_len].type = obj_Integer;
-    memcpy(&vm->op_stack[vm->op_stack_len].data, &vm->program[vm->pc], 8);
+    memcpy(&integer, &vm->program[vm->pc], 8);
+    stack_push(&vm->op_stack, &(Object) { obj_Integer, 0, integer });
 
-    vm->op_stack_len++;
     vm->pc += 8;
 
+    return FALSE;
+}
+
+RESULT inst_push_none(Vm *vm) {
+    stack_push(&vm->op_stack, &(Object) { obj_None, 0, 0 });
     return FALSE;
 }
 
 RESULT inst_push(Vm *vm) {
     u64 ptr;
+    u64 depth;
 
-    memcpy(&ptr, &vm->program[vm->pc], 8);
-    vm_opstack_grow(vm);
-
-    vm->op_stack[vm->op_stack_len] = vm->scope->stack[ptr];
-    vm->op_stack_len++;
+    memcpy(&ptr, vm->program + vm->pc, 8);
     vm->pc += 8;
+    memcpy(&depth, vm->program + vm->pc, 8);
+    vm->pc += 8;
+
+    VmScope *scope = vm->scope;
+
+    for (u64 i = 0; i < depth; ++i) {
+        scope = scope->parent;
+
+        if (scope == NULL) {
+            fprintf(stderr, FATAL "Depth too large\n");
+            exit(-1);
+        }
+    }
+
+    stack_push(&vm->op_stack, scope->stack + ptr);
 
     return FALSE;
 }
 
+
 RESULT inst_add(Vm *vm) {
     Object rhs;
-    vm_opstack_pop(vm, &rhs);
-    Object *lhs = &vm->op_stack[vm->op_stack_len - 1];
+    stack_pop(&vm->op_stack, &rhs);
+    Object *lhs = stack_index(&vm->op_stack, stack_len(&vm->op_stack) - 1);
 
     i64 rdata = (i64) rhs.data;
     i64 ldata = (i64) lhs->data;
 
-    switch (((u16) rhs.type) << 8 | (u16) lhs->type) {
-        case obj_Integer << 8 | obj_Integer:
-            lhs->data = (u64) (ldata + rdata);
-            break;
+    switch (((u16) lhs->type) << 8 | (u16) rhs.type) {
+    case obj_Integer << 8 | obj_Integer:
+        lhs->data = (u64) (ldata + rdata);
+        break;
+    default:
+        DISPATCH_ERROR_FMT(vm->context, -1, "Attempt to add invalid types `%s` and `%s`", type_to_str(lhs->type), type_to_str(rhs.type));
+        return TRUE;
     }
 
     return FALSE;
@@ -90,16 +90,19 @@ RESULT inst_add(Vm *vm) {
 
 RESULT inst_sub(Vm *vm) {
     Object rhs;
-    vm_opstack_pop(vm, &rhs);
-    Object *lhs = &vm->op_stack[vm->op_stack_len - 1];
+    stack_pop(&vm->op_stack, &rhs);
+    Object *lhs = stack_index(&vm->op_stack, stack_len(&vm->op_stack) - 1);
 
     i64 rdata = (i64) rhs.data;
     i64 ldata = (i64) lhs->data;
 
-    switch (((u16) rhs.type) << 8 | (u16) lhs->type) {
-        case obj_Integer << 8 | obj_Integer:
-            lhs->data = (u64) (ldata - rdata);
-            break;
+    switch (((u16) lhs->type) << 8 | (u16) rhs.type) {
+    case obj_Integer << 8 | obj_Integer:
+        lhs->data = (u64) (ldata - rdata);
+        break;
+    default:
+        DISPATCH_ERROR_FMT(vm->context, -1, "Attempt to subtract invalid types `%s` and `%s`", type_to_str(lhs->type), type_to_str(rhs.type));
+        return TRUE;
     }
 
     return FALSE;
@@ -107,16 +110,19 @@ RESULT inst_sub(Vm *vm) {
 
 RESULT inst_mul(Vm *vm) {
     Object rhs;
-    vm_opstack_pop(vm, &rhs);
-    Object *lhs = &vm->op_stack[vm->op_stack_len - 1];
+    stack_pop(&vm->op_stack, &rhs);
+    Object *lhs = stack_index(&vm->op_stack, stack_len(&vm->op_stack) - 1);
 
     i64 rdata = (i64) rhs.data;
     i64 ldata = (i64) lhs->data;
 
-    switch (((u16) rhs.type) << 8 | (u16) lhs->type) {
-        case obj_Integer << 8 | obj_Integer:
-            lhs->data = (u64) (ldata * rdata);
-            break;
+    switch (((u16) lhs->type) << 8 | (u16) rhs.type) {
+    case obj_Integer << 8 | obj_Integer:
+        lhs->data = (u64) (ldata * rdata);
+        break;
+    default:
+        DISPATCH_ERROR_FMT(vm->context, -1, "Attempt to multiply invalid types `%s` and `%s`", type_to_str(lhs->type), type_to_str(rhs.type));
+        return TRUE;
     }
 
     return FALSE;
@@ -124,51 +130,71 @@ RESULT inst_mul(Vm *vm) {
 
 RESULT inst_div(Vm *vm) {
     Object rhs;
-    vm_opstack_pop(vm, &rhs);
-    Object *lhs = &vm->op_stack[vm->op_stack_len - 1];
+    stack_pop(&vm->op_stack, &rhs);
+    Object *lhs = stack_index(&vm->op_stack, stack_len(&vm->op_stack) - 1);
 
     i64 rdata = (i64) rhs.data;
     i64 ldata = (i64) lhs->data;
 
-    switch (((u16) rhs.type) << 8 | (u16) lhs->type) {
-        case obj_Integer << 8 | obj_Integer:
-            lhs->data = (u64) (ldata / rdata);
-            break;
+    switch (((u16) lhs->type) << 8 | (u16) rhs.type) {
+    case obj_Integer << 8 | obj_Integer:
+        lhs->data = (u64) (ldata / rdata);
+        break;
+    default:
+        DISPATCH_ERROR_FMT(vm->context, -1, "Attempt to divide invalid types `%s` and `%s`", type_to_str(lhs->type), type_to_str(rhs.type));
+        return TRUE;
     }
 
     return FALSE;
 }
 
 RESULT inst_neg(Vm *vm) {
-    Object *oprand = &vm->op_stack[vm->op_stack_len - 1];
+    Object *oprand = stack_index(&vm->op_stack, stack_len(&vm->op_stack) - 1);
 
     switch (oprand->type) {
-        case obj_Integer:
-            oprand->data = ~oprand->data + 1;
-            break;
+    case obj_Integer:
+        oprand->data = ~oprand->data + 1;
+        break;
+    default:
+        DISPATCH_ERROR_FMT(vm->context, -1, "Attempt to negate an invalid type `%s`", type_to_str(oprand->type));
+        return TRUE;
     }
 
     return FALSE;
 }
 
 RESULT inst_pop(Vm *vm) {
-    if (vm->op_stack_len == 0) {
+    if (stack_len(&vm->op_stack) == 0) {
         fprintf(stderr, FATAL "Stack underflow\n");
         exit(-1);
     }
 
-    vm->op_stack_len--;
+    vm->op_stack.len -= sizeof (Object);
 
     return FALSE;
 }
 
 RESULT inst_pull_to(Vm *vm) {
     u64 ptr;
+    u64 depth;
 
-    memcpy(&ptr, &vm->program[vm->pc], 8);
-    vm->scope->stack[ptr] = vm->op_stack[vm->op_stack_len - 1];
-
+    memcpy(&ptr, vm->program + vm->pc, 8);
     vm->pc += 8;
+    memcpy(&depth, vm->program + vm->pc, 8);
+    vm->pc += 8;
+
+    VmScope *scope = vm->scope;
+
+    for (u64 i = 0; i < depth; ++i) {
+        scope = scope->parent;
+
+        if (scope == NULL) {
+            fprintf(stderr, FATAL "Depth too large\n");
+            exit(-1);
+        }
+    }
+
+    memcpy(scope->stack + ptr, stack_index(&vm->op_stack, stack_len(&vm->op_stack) - 1), sizeof (Object));
 
     return FALSE;
 }
@@ -178,17 +204,51 @@ RESULT inst_halt(Vm *vm) {
     return FALSE;
 }
 
-void print_obj(Object *obj) {
-    switch (obj->type) {
-        case obj_Integer:
-            printf("%lld\n", obj->data);
-            break;
+RESULT inst_scope(Vm *vm) {
+    u64 size;
+    memcpy(&size, &vm->program[vm->pc], 8);
+    vm->pc += 8;
+
+    Object *scope_obj = gc_alloc(&vm->gc);
+    VmScope *scope = heap_alloc(1, sizeof (VmScope));
+
+    scope_obj->type = obj_Scope;
+    scope_obj->data = (u64) scope;
+
+    scope->parent = vm->scope;
+    scope->stack = heap_alloc(size, sizeof (Object));
+    vm->scope = scope;
+
+    return FALSE;
+}
+
+RESULT inst_exit(Vm *vm) {
+    vm->scope = vm->scope->parent;
+    return FALSE;
+}
+
+RESULT inst_print(Vm *vm) {
+    Object obj;
+    stack_pop(&vm->op_stack, &obj);
+
+    switch (obj.type) {
+    case obj_Integer:
+        printf("%lld\n", obj.data);
+        break;
+    case obj_None:
+        printf("none\n");
+        break;
+    case obj_Scope:
+        fprintf(stderr, "Attempt to print scope");
+        exit(-1);
     }
+
+    return FALSE;
 }
 
 bool (*instructions[NUM_INSTRUCTIONS]) (Vm *vm) = {
-    inst_inv,
     inst_push_int,
+    inst_push_none,
     inst_push,
     inst_add,
     inst_sub,
@@ -198,11 +258,23 @@ bool (*instructions[NUM_INSTRUCTIONS]) (Vm *vm) = {
     inst_pop,
     inst_pull_to,
     inst_halt,
+    inst_scope,
+    inst_exit,
+    inst_print,
 };
 
 RESULT vm_run(Vm *vm) {
     while (!vm->halted) {
         u8 opcode = vm->program[vm->pc++];
+
+#ifdef EBUG_EXE
+        for (u64 i = 0; i < 4; ++i) {
+            printf("%llu ", ((Object *) stack_index(&vm->op_stack, i))->data);
+        }
+        printf("\n[x] %s\n", inst_names[opcode]);
+        getchar();
+#endif
+
         CHECK(instructions[opcode](vm));
     }
 

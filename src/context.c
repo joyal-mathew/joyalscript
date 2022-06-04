@@ -31,6 +31,5 @@ void context_run(Context *context) {
     context->vm.program = context->compiler.bytecode.arr;
 
     handle_error(context, vm_run(&context->vm));
-    ASSERT(context->vm.op_stack_len == 0);
-    print_obj(&context->vm.op_stack[0]);
+    ASSERT(context->vm.op_stack.len == 0);
 }

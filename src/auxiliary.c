@@ -10,9 +10,9 @@ void *check_ptr(void *ptr) {
 void *heap_alloc(u64 count, u64 size) {
     void *ptr_res = check_ptr(malloc(count * size));
 
-    #ifdef EBUG_MEMORY
+#ifdef EBUG_MEMORY
     printf("* _ -> %016llX\n", ptr_res);
-    #endif
+#endif
 
     return ptr_res;
 }
@@ -20,17 +20,17 @@ void *heap_alloc(u64 count, u64 size) {
 void *heap_realloc(void *ptr, u64 count, u64 size) {
     void *ptr_res = check_ptr(realloc(ptr, count * size));
 
-    #ifdef EBUG_MEMORY
+#ifdef EBUG_MEMORY
     printf("* %016llX -> %016llX\n", ptr, ptr_res);
-    #endif
+#endif
 
     return ptr_res;
 }
 
 void heap_dealloc(void *ptr) {
-    #ifdef EBUG_MEMORY
+#ifdef EBUG_MEMORY
     printf("* %016llX -> _\n", ptr);
-    #endif
+#endif
 
     free(ptr);
 }

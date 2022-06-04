@@ -2,15 +2,20 @@
 
 #include "auxiliary.h"
 #include "compiling.h"
+#include "gc.h"
 
 typedef struct __Context__ Context;
 
 typedef enum PACKED {
-    obj_Integer
+    obj_Integer,
+    obj_None,
+
+    obj_Scope,
 } ObjectType;
 
-typedef struct {
+typedef struct __Object__ {
     ObjectType type;
+    u8 mark;
     u64 data;
 } Object;
 
@@ -24,15 +29,11 @@ _Static_assert(sizeof (Object) == 16, "Object size");
 
 typedef struct {
     Context *context;
-
-    Object *op_stack;
-    u64 op_stack_len;
-    u64 op_stack_cap;
+    Stack op_stack;
+    VmScope *scope;
+    Gc gc;
 
     bool halted;
-
-    VmScope *scope;
-
     u8 *program;
     u64 pc;
 } Vm;
@@ -40,4 +41,3 @@ typedef struct {
 void vm_init(Vm *vm, Context *context);
 void vm_deinit(Vm *vm);
 RESULT vm_run(Vm *vm);
-void print_obj(Object *obj);

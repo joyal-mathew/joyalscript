@@ -2,27 +2,36 @@
 
 #include "auxiliary.h"
 #include "hashmap.h"
-#include "bytevec.h"
+#include "stack.h"
 
 #define MAX_TOKEN_STR_LEN 512
 
 typedef struct __Context__ Context;
 
 typedef enum {
-    op_Addition,
+    op_Addition, // NOTE: don't reorder
     op_Subtraction,
     op_Multiplication,
     op_Division,
+
+    op_Assignment,
+    op_Reassignment,
     op_OpenParenthesis,
     op_CloseParenthesis,
-    op_Assignment,
+    op_OpenBrace,
+    op_CloseBrace,
     NUM_OPERATORS,
 } OperatorType;
+
+typedef enum {
+    kw_Print,
+} Keyword;
 
 typedef enum {
     tt_Integer,
     tt_Operator,
     tt_Identifier,
+    tt_Keyword,
     tt_Eof,
 } JyTokenType;
 
@@ -35,8 +44,9 @@ typedef struct {
     u64 line;
 
     HashMap operator_map;
+    HashMap keyword_map;
 
-    ByteVec idents;
+    Stack idents;
 
     char token_str[MAX_TOKEN_STR_LEN];
     JyTokenType token_type;
@@ -44,6 +54,7 @@ typedef struct {
         u64 integer;
         OperatorType operator_type;
         char *ident;
+        Keyword keyword;
     };
 } Lexer;
 
