@@ -12,7 +12,7 @@ void parser_init(Parser *parser, Context *context) {
     memset(parser->precedence_lookup, 0, NUM_OPERATORS * sizeof (u8));
 
     parser->precedence_lookup[op_Assignment] = 3; // NOTE: MAX_PRECEDENCE must change if this does
-    parser->precedence_lookup[op_Reassignment] = 3; // NOTE: MAX_PRECEDENCE must change if this does
+    parser->precedence_lookup[op_Reassignment] = 3;
     parser->precedence_lookup[op_Addition] = 2;
     parser->precedence_lookup[op_Subtraction] = 2;
     parser->precedence_lookup[op_Multiplication] = 1;
@@ -20,6 +20,14 @@ void parser_init(Parser *parser, Context *context) {
 }
 
 void parser_deinit(UNUSED Parser *parser) {}
+
+bool is_op(Parser *parser, OperatorType op) {
+    return parser->context->lexer.token_type == tt_Operator && parser->context->lexer.operator_type == op;
+}
+
+bool is_keyword(Parser *parser, Keyword kw) {
+    return parser->context->lexer.token_type == tt_Keyword && parser->context->lexer.keyword == kw;
+}
 
 RESULT parser_expr(Parser *parser, Expression *expr) {
     CHECK(parser_binop(parser, expr, MAX_PRECEDENCE));
@@ -37,27 +45,83 @@ void print_statement(Statement *statement) {
         printf("PRINT\t");
         print_expr(&statement->expr);
         break;
+    case st_Send:
+        printf("SEND\t");
+        print_expr(&statement->expr);
+        break;
+    case st_While:
+        printf("WHILE\t");
+        print_expr(&statement->while_condition);
+        print_expr(&statement->while_body);
+        break;
     }
 }
 
+RESULT paren_expr_or_null(Parser *parser, Expression *expr) {
+    if (!is_op(parser, op_OpenParenthesis)) {
+        DISPATCH_ERROR(parser->context, parser->context->lexer.line, "Expected open parenthesis");
+        return TRUE;
+    }
+
+    CHECK(lexer_next(&parser->context->lexer));
+
+    if (is_op(parser, op_CloseParenthesis)) {
+        expr->type = ex_Null;
+    }
+    else {
+        CHECK(parser_expr(parser, expr));
+
+        if (!is_op(parser, op_CloseParenthesis)) {
+            DISPATCH_ERROR(parser->context, parser->context->lexer.line, "Expected close parenthesis");
+            return TRUE;
+        }
+    }
+
+    return lexer_next(&parser->context->lexer);
+}
+
+RESULT parser_while(Parser *parser, Statement *statement) {
+    statement->type = st_While;
+    statement->line = parser->context->lexer.line;
+
+    CHECK(lexer_next(&parser->context->lexer));
+    CHECK(paren_expr_or_null(parser, &statement->while_condition));
+    CHECK(parser_expr(parser, &statement->while_body));
+
+    if (statement->while_condition.type == ex_Null) {
+        DISPATCH_ERROR(parser->context, parser->context->lexer.line, "Expected non-empty condition in while loop");
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
 RESULT parser_statement(Parser *parser, Statement *statement) {
-    switch (parser->context->lexer.token_type) {
-    case tt_Keyword:
+    if (parser->context->lexer.token_type == tt_Keyword) {
         switch (parser->context->lexer.keyword) {
         case kw_Print:
             statement->type = st_Print;
             CHECK(lexer_next(&parser->context->lexer));
             CHECK(parser_expr(parser, &statement->expr));
             statement->line = statement->expr.line;
+            return FALSE;
+        case kw_Send:
+            statement->type = st_Send;
+            CHECK(lexer_next(&parser->context->lexer));
+            CHECK(parser_expr(parser, &statement->expr));
+            statement->line = statement->expr.line;
+            return FALSE;
+        case kw_While:
+            CHECK(parser_while(parser, statement));
+            return FALSE;
+        default:
             break;
         }
-        break;
-    default:
-        statement->type = st_Expression;
-        CHECK(parser_expr(parser, &statement->expr));
-        statement->line = statement->expr.line;
-        break;
     }
+
+    statement->type = st_Expression;
+    CHECK(parser_expr(parser, &statement->expr));
+    statement->line = statement->expr.line;
 
     return FALSE;
 }
@@ -70,14 +134,7 @@ RESULT parser_block_general(Parser *parser, Expression *expr) {
     expr->type = ex_Block;
     expr->line = parser->context->lexer.line;
 
-    while (
-           parser->context->lexer.token_type != tt_Eof &&
-
-           (
-            parser->context->lexer.token_type != tt_Operator ||
-            parser->context->lexer.operator_type != op_CloseBrace
-            )
-           ) {
+    while (parser->context->lexer.token_type != tt_Eof && !is_op(parser, op_CloseBrace)) {
         CHECK(parser_statement(parser, stack_reserve(&statements)));
     }
 
@@ -97,6 +154,31 @@ RESULT parser_block(Parser *parser, Expression *expr) {
     }
 
     return lexer_next(&parser->context->lexer);
+}
+
+RESULT parser_ifelse(Parser *parser, Expression *expr) {
+    expr->condition= heap_alloc(1, sizeof (Expression));
+    expr->on_true = heap_alloc(1, sizeof (Expression));
+    expr->on_false = NULL;
+    expr->type = ex_IfElse;
+    expr->line = parser->context->lexer.line;
+
+    CHECK(lexer_next(&parser->context->lexer));
+    CHECK(paren_expr_or_null(parser, expr->condition));
+    CHECK(parser_expr(parser, expr->on_true));
+
+    if (expr->condition->type == ex_Null) {
+        DISPATCH_ERROR(parser->context, parser->context->lexer.line, "Expected non-empty condition in if statement");
+        return TRUE;
+    }
+
+    if (is_keyword(parser, kw_Else)) {
+        expr->on_false = heap_alloc(1, sizeof (Expression));
+        CHECK(lexer_next(&parser->context->lexer));
+        CHECK(parser_expr(parser, expr->on_false));
+    }
+
+    return FALSE;
 }
 
 RESULT parser_term(Parser *parser, Expression *expr) {
@@ -121,8 +203,17 @@ RESULT parser_term(Parser *parser, Expression *expr) {
         CHECK(lexer_next(lexer));
         break;
     case tt_Keyword:
-        DISPATCH_ERROR(lexer->context, lexer->line, "Unexpected keyword");
-        return TRUE;
+        switch (lexer->keyword) {
+        case kw_If:
+            CHECK(parser_ifelse(parser, expr));
+            break;
+        default:
+            token_to_str(lexer);
+            DISPATCH_ERROR_FMT(lexer->context, lexer->line, "Unexpected keyword `%s`", lexer->token_str);
+            return TRUE;
+        }
+
+        break;
     case tt_Operator:
         switch (lexer->operator_type) {
         case op_Subtraction:
@@ -137,7 +228,7 @@ RESULT parser_term(Parser *parser, Expression *expr) {
             CHECK(lexer_next(lexer));
             CHECK(parser_expr(parser, expr));
 
-            if (lexer->token_type != tt_Operator || lexer->operator_type != op_CloseParenthesis) {
+            if (!is_op(parser, op_CloseParenthesis)) {
                 token_to_str(lexer);
                 DISPATCH_ERROR_FMT(parser->context, expr->line, "Expected closing parenthesis, not `%s`", lexer->token_str);
                 return TRUE;
@@ -189,29 +280,32 @@ RESULT parser_binop(Parser *parser, Expression *expr, u8 precedence) {
     return FALSE;
 }
 
-void tree_deallocate(Expression *expr);
+void tree_dealloc(Expression *expr);
 
 void statement_dealloc(Statement *statement) {
     switch (statement->type) {
     case st_Expression:
-        tree_deallocate(&statement->expr);
-        break;
     case st_Print:
-        tree_deallocate(&statement->expr);
+    case st_Send:
+        tree_dealloc(&statement->expr);
+        break;
+    case st_While:
+        tree_dealloc(&statement->while_condition);
+        tree_dealloc(&statement->while_body);
         break;
     }
 }
 
-void tree_deallocate(Expression *expr) {
+void tree_dealloc(Expression *expr) {
     switch (expr->type) {
     case ex_BinaryOperation:
-        tree_deallocate(expr->lhs);
-        tree_deallocate(expr->rhs);
+        tree_dealloc(expr->lhs);
+        tree_dealloc(expr->rhs);
         heap_dealloc(expr->lhs);
         heap_dealloc(expr->rhs);
         break;
     case ex_UnaryOperation:
-        tree_deallocate(expr->oprand);
+        tree_dealloc(expr->oprand);
         heap_dealloc(expr->oprand);
         break;
     case ex_Block:
@@ -220,19 +314,27 @@ void tree_deallocate(Expression *expr) {
         }
         heap_dealloc(expr->statements);
         break;
+    case ex_IfElse:
+        tree_dealloc(expr->condition);
+        tree_dealloc(expr->on_true);
+        heap_dealloc(expr->condition);
+        heap_dealloc(expr->on_true);
+
+        if (expr->on_false) {
+            tree_dealloc(expr->on_false);
+            heap_dealloc(expr->on_false);
+        }
+
+        break;
     case ex_Identifier:
     case ex_Integer:
+    case ex_Null:
         break;
     }
 }
 
 void parser_stmt_deinit(Parser *parser) {
-    switch (parser->statement.type) {
-    case st_Expression:
-    case st_Print:
-        tree_deallocate(&parser->statement.expr);
-        break;
-    }
+    statement_dealloc(&parser->statement);
 }
 
 RESULT parser_next(Parser *parser) {
@@ -255,6 +357,10 @@ void print_expr(Expression *expr) {
 
     case ex_Integer:
         printf("%llu", expr->integer);
+        break;
+    case ex_Null:
+        fprintf(stderr, FATAL "Got null exression in print\n");
+        exit(-1);
         break;
     case ex_Identifier:
         printf("%s", expr->ident);
@@ -284,6 +390,18 @@ void print_expr(Expression *expr) {
             puts("");
         }
         putchar('}');
+
+        break;
+    case ex_IfElse:
+        printf("if ");
+        print_expr(expr->condition);
+        printf("then ");
+        print_expr(expr->on_true);
+
+        if (expr->on_false) {
+            printf("else ");
+            print_expr(expr->on_false);
+        }
 
         break;
     }

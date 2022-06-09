@@ -3,7 +3,7 @@
 #include "context.h"
 #include "vm.h"
 
-#define INST_PUSH_INT   0x00 // NOTE: inst_names and instructions must change if this does
+#define INST_PUSH_INT   0x00 // NOTE: inst_names, instructions, and NUM_INSTRUCTIONS must change if this does
 #define INST_PUSH_NONE  0x01
 #define INST_PUSH       0x02
 #define INST_ADD        0x03
@@ -17,6 +17,9 @@
 #define INST_SCOPE      0x0B
 #define INST_EXIT       0x0C
 #define INST_PRINT      0x0D
+#define INST_JUMP       0x0E
+#define INST_BRANCH     0x0F
+#define INST_BRANCH_F   0x10
 
 #define OP_OFFSET INST_ADD
 
@@ -132,6 +135,9 @@ RESULT compile_assignment(Compiler *compiler, Expression *expr, bool reassign) {
 
 RESULT compile_statement(Compiler *compiler, Statement *statement) {
     switch (statement->type) {
+        u64 loop;
+        u64 addr;
+
     case st_Expression:
         CHECK(compile_expr(compiler, &statement->expr));
         compiler_emit_instruction(compiler, INST_POP);
@@ -140,6 +146,21 @@ RESULT compile_statement(Compiler *compiler, Statement *statement) {
         CHECK(compile_expr(compiler, &statement->expr));
         compiler_emit_instruction(compiler, INST_PRINT);
         break;
+    case st_Send:
+        CHECK(compile_expr(compiler, &statement->expr));
+        break;
+    case st_While:
+        loop = compiler->bytecode.len;
+        CHECK(compile_expr(compiler, &statement->while_condition));
+        compiler_emit_instruction(compiler, INST_BRANCH_F);
+        addr = compiler->bytecode.len;
+        compiler_emit_qword(compiler, 0);
+        CHECK(compile_expr(compiler, &statement->while_body));
+        compiler_emit_instruction(compiler, INST_POP);
+        compiler_emit_instruction(compiler, INST_JUMP);
+        compiler_emit_qword(compiler, loop);
+        memcpy(compiler->bytecode.arr + addr, &compiler->bytecode.len, 8);
+        break;
     }
 
     return FALSE;
@@ -147,15 +168,21 @@ RESULT compile_statement(Compiler *compiler, Statement *statement) {
 
 RESULT compile_expr(Compiler *compiler, Expression *expr) {
     switch (expr->type) {
+        Stack exit_point_addrs;
+
         u64 op_sstr;
         u64 ptr;
         u64 depth;
         u64 addr;
+        u64 addr2;
 
     case ex_Integer:
         compiler_emit_instruction(compiler, INST_PUSH_INT);
         compiler_emit_qword(compiler, expr->integer);
         break;
+    case ex_Null:
+        fprintf(stderr, FATAL "Got null expression");
+        exit(-1);
     case ex_Identifier:
         if (scope_get(compiler->scope, expr->ident, &ptr, &depth)) {
             DISPATCH_ERROR_FMT(compiler->context, expr->line, "Undefined variable `%s`", expr->ident);
@@ -195,6 +222,8 @@ RESULT compile_expr(Compiler *compiler, Expression *expr) {
 
         break;
     case ex_Block:
+        stack_init(&exit_point_addrs, sizeof (u64));
+
         compiler_emit_instruction(compiler, INST_SCOPE);
         addr = compiler->bytecode.len;
         compiler_emit_qword(compiler, 0);
@@ -202,12 +231,45 @@ RESULT compile_expr(Compiler *compiler, Expression *expr) {
 
         for (u64 i = 0; i < expr->num_statements; ++i) {
             CHECK(compile_statement(compiler, expr->statements + i));
+
+            switch (expr->statements[i].type) {
+            case st_Send:
+                compiler_emit_instruction(compiler, INST_JUMP);
+                stack_push(&exit_point_addrs, &compiler->bytecode.len);
+                compiler_emit_qword(compiler, 0);
+                break;
+            default:
+                break;
+            }
+        }
+
+        compiler_emit_instruction(compiler, INST_PUSH_NONE);
+
+        for (u64 i = 0; i < stack_len(&exit_point_addrs); ++i) {
+            u64 a = *(u64 *) stack_index(&exit_point_addrs, i);
+            memcpy(compiler->bytecode.arr + a, &compiler->bytecode.len, 8);
         }
 
         compiler_emit_instruction(compiler, INST_EXIT);
-        compiler_emit_instruction(compiler, INST_PUSH_NONE);
         memcpy(compiler->bytecode.arr + addr, &compiler->scope->ptr, 8);
         compiler_exit(compiler);
+
+        break;
+    case ex_IfElse:
+        CHECK(compile_expr(compiler, expr->condition));
+        compiler_emit_instruction(compiler, INST_BRANCH);
+        addr = compiler->bytecode.len;
+        compiler_emit_qword(compiler, 0);
+
+        if (expr->on_false) CHECK(compile_expr(compiler, expr->on_false));
+        else compiler_emit_instruction(compiler, INST_PUSH_NONE);
+
+        compiler_emit_instruction(compiler, INST_JUMP);
+        addr2 = compiler->bytecode.len;
+        compiler_emit_qword(compiler, 0);
+        memcpy(compiler->bytecode.arr + addr, &compiler->bytecode.len, 8);
+        CHECK(compile_expr(compiler, expr->on_true));
+        memcpy(compiler->bytecode.arr + addr2, &compiler->bytecode.len, 8);
 
         break;
     }

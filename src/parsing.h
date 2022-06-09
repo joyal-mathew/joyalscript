@@ -7,11 +7,13 @@ typedef struct __Context__ Context;
 typedef struct __Statement__ Statement;
 
 typedef enum {
+    ex_Null,
     ex_Integer,
     ex_Identifier,
     ex_BinaryOperation,
     ex_UnaryOperation,
     ex_Block,
+    ex_IfElse,
 } ExpressionType;
 
 typedef struct __Expression__ {
@@ -39,12 +41,20 @@ typedef struct __Expression__ {
             u64 num_statements;
             Statement *statements;
         };
+
+        struct {
+            struct __Expression__ *condition;
+            struct __Expression__ *on_true;
+            struct __Expression__ *on_false;
+        };
     };
 } Expression;
 
 typedef enum {
     st_Expression,
     st_Print,
+    st_Send,
+    st_While,
 } StatementType;
 
 typedef struct __Statement__ {
@@ -53,6 +63,11 @@ typedef struct __Statement__ {
 
     union {
         Expression expr;
+
+        struct {
+            Expression while_condition;
+            Expression while_body;
+        };
     };
 } Statement;
 

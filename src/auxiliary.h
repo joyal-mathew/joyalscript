@@ -15,8 +15,9 @@ typedef char bool;
 
 #define CHECK(v) do { if (v) return TRUE; } while (FALSE)
 
-#define DEBUG(v) do { printf(__FILE__ ":%llu\t%llu\n", __LINE__, v); } while (FALSE)
-#define ASSERT(v) do { if (!(v)) { printf(__FILE__ ":%llu\tAssertion Failed: " #v "\n", __LINE__); exit(-1); }  } while (FALSE)
+#define DEBUG(v) do { printf(__FILE__ ":%d\t%d\n", __LINE__, v); } while (FALSE)
+#define ASSERT(v) do { if (!(v)) { printf(__FILE__ ":%d\tAssertion Failed: " #v "\n", __LINE__); exit(-1); }  } while (FALSE)
+#define UNREACHABLE() do { fprintf(stderr, FATAL "UNREACHABLE %s:%d", __FILE__, __LINE__); exit(-1); } while (FALSE)
 
 #define FATAL "\x1B[91m[FATAL]\x1B[0m\t"
 #define ERR "\x1B[91m[ERROR]\x1B[0m\t"

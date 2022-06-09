@@ -3,6 +3,8 @@
 #include "vm.h"
 #include "context.h"
 
+#define NUM_INSTRUCTIONS 17
+
 const char *type_to_str(ObjectType type) {
     switch (type) {
     case obj_Integer:   return "Integer";
@@ -246,6 +248,59 @@ RESULT inst_print(Vm *vm) {
     return FALSE;
 }
 
+RESULT inst_jump(Vm *vm) {
+    u64 addr;
+    memcpy(&addr, vm->program + vm->pc, 8);
+    vm->pc = addr;
+    return FALSE;
+}
+
+RESULT inst_branch(Vm *vm) {
+    u64 addr;
+    Object condition;
+    bool branch;
+
+    stack_pop(&vm->op_stack, &condition);
+    memcpy(&addr, vm->program + vm->pc, 8);
+
+    switch (condition.type) {
+    case obj_Integer:
+    case obj_None:
+        branch = condition.data;
+        break;
+    default:
+        DISPATCH_ERROR_FMT(vm->context, -1, "Cannot determine truth value of object with type `%s`", type_to_str(condition.type));
+        return TRUE;
+    }
+
+    vm->pc = branch ? addr : vm->pc + 8;
+
+    return FALSE;
+}
+
+RESULT inst_branch_f(Vm *vm) {
+    u64 addr;
+    Object condition;
+    bool nobranch;
+
+    stack_pop(&vm->op_stack, &condition);
+    memcpy(&addr, vm->program + vm->pc, 8);
+
+    switch (condition.type) {
+    case obj_Integer:
+    case obj_None:
+        nobranch = condition.data;
+        break;
+    default:
+        DISPATCH_ERROR_FMT(vm->context, -1, "Cannot determine truth value of object with type `%s`", type_to_str(condition.type));
+        return TRUE;
+    }
+
+    vm->pc = nobranch ? vm->pc + 8 : addr;
+
+    return FALSE;
+}
+
 bool (*instructions[NUM_INSTRUCTIONS]) (Vm *vm) = {
     inst_push_int,
     inst_push_none,
@@ -261,6 +316,29 @@ bool (*instructions[NUM_INSTRUCTIONS]) (Vm *vm) = {
     inst_scope,
     inst_exit,
     inst_print,
+    inst_jump,
+    inst_branch,
+    inst_branch_f,
+};
+
+const char *inst_names[NUM_INSTRUCTIONS] = {
+    "push_int",
+    "push_none",
+    "push",
+    "add",
+    "sub",
+    "mul",
+    "div",
+    "neg",
+    "pop",
+    "pull_to",
+    "halt",
+    "scope",
+    "exit",
+    "print",
+    "jump",
+    "branch",
+    "branch_f",
 };
 
 RESULT vm_run(Vm *vm) {
@@ -271,7 +349,8 @@ RESULT vm_run(Vm *vm) {
         for (u64 i = 0; i < 4; ++i) {
             printf("%llu ", ((Object *) stack_index(&vm->op_stack, i))->data);
         }
-        printf("\n[x] %s\n", inst_names[opcode]);
+        printf("\n[x] %hhu\t", opcode);
+        printf("%s\n", inst_names[opcode]);
         getchar();
 #endif
 

@@ -132,6 +132,10 @@ RESULT lexer_init(Lexer *lexer, Context *context) {
     hashmap_put(&lexer->operator_map, "}", op_CloseBrace);
 
     hashmap_put(&lexer->keyword_map, "print", kw_Print);
+    hashmap_put(&lexer->keyword_map, "send", kw_Send);
+    hashmap_put(&lexer->keyword_map, "if", kw_If);
+    hashmap_put(&lexer->keyword_map, "else", kw_Else);
+    hashmap_put(&lexer->keyword_map, "while", kw_While);
 
     return lexer_next(lexer);
 }
@@ -166,6 +170,7 @@ RESULT lexer_next(Lexer *lexer) {
         }
         else {
             DISPATCH_ERROR_FMT(lexer->context, lexer->line, "Invalid character `%c`", c);
+            return TRUE;
         }
     }
 
@@ -202,12 +207,20 @@ u64 op_to_sstr(OperatorType op) {
     case op_CloseBrace:         return str_to_sstr("}");
     case NUM_OPERATORS:         return str_to_sstr("?");
     }
+
+    UNREACHABLE();
 }
 
 const char *keyword_to_str(Keyword keyword) {
     switch (keyword) {
     case kw_Print: return "print";
+    case kw_Send: return "send";
+    case kw_If: return "if";
+    case kw_Else: return "else";
+    case kw_While: return "while";
     }
+
+    UNREACHABLE();
 }
 
 void token_to_str(Lexer *lexer) {

@@ -25,6 +25,10 @@ typedef enum {
 
 typedef enum {
     kw_Print,
+    kw_Send,
+    kw_If,
+    kw_Else,
+    kw_While,
 } Keyword;
 
 typedef enum {
