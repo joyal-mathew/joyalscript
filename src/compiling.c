@@ -67,12 +67,12 @@ void compiler_init(Compiler *compiler, Context *context) {
     compiler->scope = heap_alloc(1, sizeof (Scope));
     compiler->uid_counter = 0;
 
-    stack_init(&compiler->bytecode, sizeof (u64));
+    assembler_init(&compiler->assembler);
     compiler->scope = NULL;
 }
 
 void compiler_deinit(Compiler *compiler) {
-    stack_deinit(&compiler->bytecode);
+    assembler_deinit(&compiler->assembler);
 
     if (compiler->scope) {
         hashmap_deinit(&compiler->scope->vars);
@@ -81,23 +81,31 @@ void compiler_deinit(Compiler *compiler) {
 }
 
 void compiler_emit_instruction(Compiler *compiler, u8 instruction) {
-#ifdef EBUG_BYTECODE
-    printf("> %s\n", inst_names[instruction]);
-#endif
-
-    stack_push_byte(&compiler->bytecode, instruction);
-}
-
-void compiler_emit_qword(Compiler *compiler, u64 qword) {
-#ifdef EBUG_BYTECODE
-    printf("> %016X\n", qword);
-#endif
-
-    stack_push(&compiler->bytecode, &qword);
+    assembler_emit(&compiler->assembler, (Atom) { at_Byte, { .byte = instruction } });
 }
 
 void compiler_emit_byte(Compiler *compiler, u8 byte) {
-    compiler_emit_instruction(compiler, byte);
+    assembler_emit(&compiler->assembler, (Atom) { at_Byte, { .byte = byte } });
+}
+
+void compiler_emit_qword(Compiler *compiler, u64 number) {
+    assembler_emit(&compiler->assembler, (Atom) { at_Number, { .number = number } });
+}
+
+void compiler_emit_label_def(Compiler *compiler, u64 label) {
+    assembler_emit(&compiler->assembler, (Atom) { at_LabelDef, { .label = label } });
+}
+
+void compiler_emit_label_ref(Compiler *compiler, u64 label) {
+    assembler_emit(&compiler->assembler, (Atom) { at_LabelRef, { .label = label } });
+}
+
+void compiler_emit_var_ref(Compiler *compiler, u64 var) {
+    assembler_emit(&compiler->assembler, (Atom) { at_VarRef, { .var_ref = var } });
+}
+
+void compiler_emit_var_def(Compiler *compiler, u64 var, u64 val) {
+    assembler_emit(&compiler->assembler, (Atom) { at_VarDef, { .var = var, .val = val  } });
 }
 
 RESULT compile_expr(Compiler *compiler, Expression *expr);
@@ -136,7 +144,7 @@ RESULT compile_assignment(Compiler *compiler, Expression *expr, bool reassign) {
 RESULT compile_statement(Compiler *compiler, Statement *statement) {
     switch (statement->type) {
         u64 loop;
-        u64 addr;
+        u64 end;
 
     case st_Expression:
         CHECK(compile_expr(compiler, &statement->expr));
@@ -150,16 +158,18 @@ RESULT compile_statement(Compiler *compiler, Statement *statement) {
         CHECK(compile_expr(compiler, &statement->expr));
         break;
     case st_While:
-        loop = compiler->bytecode.len;
+        loop = assembler_get_next(&compiler->assembler);
+        end = assembler_get_next(&compiler->assembler);
+
+        compiler_emit_label_def(compiler, loop);
         CHECK(compile_expr(compiler, &statement->while_condition));
         compiler_emit_instruction(compiler, INST_BRANCH_F);
-        addr = compiler->bytecode.len;
-        compiler_emit_qword(compiler, 0);
+        compiler_emit_label_ref(compiler, end);
         CHECK(compile_expr(compiler, &statement->while_body));
         compiler_emit_instruction(compiler, INST_POP);
         compiler_emit_instruction(compiler, INST_JUMP);
-        compiler_emit_qword(compiler, loop);
-        memcpy(compiler->bytecode.arr + addr, &compiler->bytecode.len, 8);
+        compiler_emit_label_ref(compiler, loop);
+        compiler_emit_label_def(compiler, end);
         break;
     }
 
@@ -168,13 +178,13 @@ RESULT compile_statement(Compiler *compiler, Statement *statement) {
 
 RESULT compile_expr(Compiler *compiler, Expression *expr) {
     switch (expr->type) {
-        Stack exit_point_addrs;
-
+        u64 exit_point;
+        u64 scope_size;
         u64 op_sstr;
         u64 ptr;
         u64 depth;
-        u64 addr;
-        u64 addr2;
+        u64 on_if;
+        u64 end;
 
     case ex_Integer:
         compiler_emit_instruction(compiler, INST_PUSH_INT);
@@ -222,11 +232,11 @@ RESULT compile_expr(Compiler *compiler, Expression *expr) {
 
         break;
     case ex_Block:
-        stack_init(&exit_point_addrs, sizeof (u64));
+        exit_point = assembler_get_next(&compiler->assembler);
+        scope_size = assembler_get_next(&compiler->assembler);
 
         compiler_emit_instruction(compiler, INST_SCOPE);
-        addr = compiler->bytecode.len;
-        compiler_emit_qword(compiler, 0);
+        compiler_emit_var_ref(compiler, scope_size);
         compiler_scope(compiler);
 
         for (u64 i = 0; i < expr->num_statements; ++i) {
@@ -235,8 +245,7 @@ RESULT compile_expr(Compiler *compiler, Expression *expr) {
             switch (expr->statements[i].type) {
             case st_Send:
                 compiler_emit_instruction(compiler, INST_JUMP);
-                stack_push(&exit_point_addrs, &compiler->bytecode.len);
-                compiler_emit_qword(compiler, 0);
+                compiler_emit_label_ref(compiler, exit_point);
                 break;
             default:
                 break;
@@ -244,33 +253,32 @@ RESULT compile_expr(Compiler *compiler, Expression *expr) {
         }
 
         compiler_emit_instruction(compiler, INST_PUSH_NONE);
-
-        for (u64 i = 0; i < stack_len(&exit_point_addrs); ++i) {
-            u64 a = *(u64 *) stack_index(&exit_point_addrs, i);
-            memcpy(compiler->bytecode.arr + a, &compiler->bytecode.len, 8);
-        }
-
+        compiler_emit_label_def(compiler, exit_point);
         compiler_emit_instruction(compiler, INST_EXIT);
-        memcpy(compiler->bytecode.arr + addr, &compiler->scope->ptr, 8);
+        compiler_emit_var_def(compiler, scope_size, compiler->scope->ptr);
         compiler_exit(compiler);
-
         break;
     case ex_IfElse:
+        on_if = assembler_get_next(&compiler->assembler);
+        end = assembler_get_next(&compiler->assembler);
+
         CHECK(compile_expr(compiler, expr->condition));
         compiler_emit_instruction(compiler, INST_BRANCH);
-        addr = compiler->bytecode.len;
-        compiler_emit_qword(compiler, 0);
+        compiler_emit_label_ref(compiler, on_if);
 
         if (expr->on_false) CHECK(compile_expr(compiler, expr->on_false));
         else compiler_emit_instruction(compiler, INST_PUSH_NONE);
 
         compiler_emit_instruction(compiler, INST_JUMP);
-        addr2 = compiler->bytecode.len;
-        compiler_emit_qword(compiler, 0);
-        memcpy(compiler->bytecode.arr + addr, &compiler->bytecode.len, 8);
+        compiler_emit_label_ref(compiler, end);
+        compiler_emit_label_def(compiler, on_if);
         CHECK(compile_expr(compiler, expr->on_true));
-        memcpy(compiler->bytecode.arr + addr2, &compiler->bytecode.len, 8);
+        compiler_emit_label_def(compiler, end);
 
+        break;
+    case ex_Function:
+        fprintf(stderr, FATAL "Function compilation");
+        exit(-1);
         break;
     }
 
@@ -281,6 +289,8 @@ RESULT compiler_compile(Compiler *compiler) {
     CHECK(parser_next(&compiler->context->parser));
     CHECK(compile_statement(compiler, &compiler->context->parser.statement));
     compiler_emit_instruction(compiler, INST_HALT);
+    assembler_assemble(&compiler->assembler);
+    compiler->bytecode = compiler->assembler.bytecode.arr;
 
     return FALSE;
 }

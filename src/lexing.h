@@ -16,6 +16,8 @@ typedef enum {
 
     op_Assignment,
     op_Reassignment,
+    op_Lambda,
+    op_Colon,
     op_OpenParenthesis,
     op_CloseParenthesis,
     op_OpenBrace,

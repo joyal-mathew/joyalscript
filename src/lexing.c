@@ -12,6 +12,7 @@ bool is_operator(char c) {
         c == '-' ||
         c == '*' ||
         c == '/' ||
+        c == '\\' ||
         c == '=' ||
         c == ':' ||
         c == '{' ||
@@ -122,6 +123,8 @@ RESULT lexer_init(Lexer *lexer, Context *context) {
 
     hashmap_put(&lexer->operator_map, "=", op_Assignment);
     hashmap_put(&lexer->operator_map, ":=", op_Reassignment);
+    hashmap_put(&lexer->operator_map, "\\", op_Lambda);
+    hashmap_put(&lexer->operator_map, ":", op_Colon);
     hashmap_put(&lexer->operator_map, "+", op_Addition);
     hashmap_put(&lexer->operator_map, "-", op_Subtraction);
     hashmap_put(&lexer->operator_map, "*", op_Multiplication);
@@ -197,6 +200,8 @@ u64 op_to_sstr(OperatorType op) {
     switch (op) {
     case op_Assignment:         return str_to_sstr("=");
     case op_Reassignment:       return str_to_sstr(":=");
+    case op_Lambda:             return str_to_sstr("\\");
+    case op_Colon:              return str_to_sstr(":");
     case op_Addition:           return str_to_sstr("+");
     case op_Subtraction:        return str_to_sstr("-");
     case op_Multiplication:     return str_to_sstr("*");

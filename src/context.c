@@ -28,7 +28,7 @@ void context_deinit(Context *context) {
 
 void context_run(Context *context) {
     handle_error(context, compiler_compile(&context->compiler));
-    context->vm.program = context->compiler.bytecode.arr;
+    context->vm.program = context->compiler.bytecode;
 
     handle_error(context, vm_run(&context->vm));
     ASSERT(context->vm.op_stack.len == 0);

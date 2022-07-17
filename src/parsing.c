@@ -96,6 +96,31 @@ RESULT parser_while(Parser *parser, Statement *statement) {
     return FALSE;
 }
 
+RESULT parser_function(Parser *parser, Expression *expr) {
+    Stack params;
+
+    expr->type = ex_Function;
+    expr->line = parser->context->lexer.line;
+
+    CHECK(lexer_next(&parser->context->lexer));
+    stack_init(&params, sizeof (char *));
+
+    while (!is_op(parser, op_Colon)) {
+        if (parser->context->lexer.token_type != tt_Identifier) {
+            DISPATCH_ERROR(parser->context, parser->context->lexer.line, "Expected identifier in function parameters");
+            return TRUE;
+        }
+
+        stack_push(&params, &parser->context->lexer.ident);
+    }
+
+    expr->params = (char **) params.arr;
+    expr->num_params = stack_len(&params);
+    CHECK(parser_expr(parser, expr->body));
+
+    return FALSE;
+}
+
 RESULT parser_statement(Parser *parser, Statement *statement) {
     if (parser->context->lexer.token_type == tt_Keyword) {
         switch (parser->context->lexer.keyword) {
@@ -239,6 +264,9 @@ RESULT parser_term(Parser *parser, Expression *expr) {
         case op_OpenBrace:
             CHECK(parser_block(parser, expr));
             break;
+        case op_Lambda:
+            CHECK(parser_function(parser, expr));
+            break;
         default:
             token_to_str(&parser->context->lexer);
             DISPATCH_ERROR_FMT(parser->context, parser->context->lexer.line, "Unexpected operator `%s`", parser->context->lexer.token_str);
@@ -326,6 +354,11 @@ void tree_dealloc(Expression *expr) {
         }
 
         break;
+    case ex_Function:
+        tree_dealloc(expr->body);
+        heap_dealloc(expr->body);
+        heap_dealloc(expr->params);
+        break;
     case ex_Identifier:
     case ex_Integer:
     case ex_Null:
@@ -403,6 +436,10 @@ void print_expr(Expression *expr) {
             print_expr(expr->on_false);
         }
 
+        break;
+    case ex_Function:
+        fprintf(stderr, FATAL "Function print");
+        exit(-1);
         break;
     }
 }

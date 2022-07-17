@@ -14,6 +14,7 @@ typedef enum {
     ex_UnaryOperation,
     ex_Block,
     ex_IfElse,
+    ex_Function,
 } ExpressionType;
 
 typedef struct __Expression__ {
@@ -46,6 +47,12 @@ typedef struct __Expression__ {
             struct __Expression__ *condition;
             struct __Expression__ *on_true;
             struct __Expression__ *on_false;
+        };
+
+        struct {
+            char **params;
+            u64 num_params;
+            struct __Expression__ *body;
         };
     };
 } Expression;

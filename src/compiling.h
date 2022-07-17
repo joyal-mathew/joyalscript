@@ -3,6 +3,7 @@
 #include "auxiliary.h"
 #include "stack.h"
 #include "hashmap.h"
+#include "assembling.h"
 
 typedef struct __Context__ Context;
 
@@ -16,7 +17,8 @@ typedef struct __Scope__ {
 typedef struct {
     Context *context;
     Scope *scope;
-    Stack bytecode;
+    Assembler assembler;
+    u8 *bytecode;
 
     u64 uid_counter;
 } Compiler;
